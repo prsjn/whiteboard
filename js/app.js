@@ -458,19 +458,29 @@ class WhiteboardApp {
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
-    // Ctrl + Wheel or standard vertical wheel zooming
-    if (e.ctrlKey || (!e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX) * 1.5)) {
+    // Ctrl + Wheel or Pinch gesture: Zoom In & Out
+    if (e.ctrlKey || e.metaKey) {
       const factor = e.deltaY < 0 ? 1.12 : 0.89;
       this.canvasManager.zoomAt(screenX, screenY, factor);
       this.canvasManager.redrawAll(this.historyManager.getStrokes());
       this.updateZoomDisplay();
-    } else {
-      // Two-finger trackpad panning or Shift+Wheel horizontal scroll
-      const dx = e.shiftKey ? -e.deltaY : -e.deltaX;
-      const dy = e.shiftKey ? 0 : -e.deltaY;
-      this.canvasManager.panBy(dx, dy);
-      this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      return;
     }
+
+    // Shift + Wheel: Horizontal shift (Left & Right)
+    if (e.shiftKey) {
+      this.canvasManager.panBy(-e.deltaY, 0);
+      this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      return;
+    }
+
+    // Natural 2D Pan:
+    // Vertical scroll (wheel) shifts Up & Down
+    // Horizontal scroll (touchpad) shifts Left & Right
+    const dx = -e.deltaX;
+    const dy = -e.deltaY;
+    this.canvasManager.panBy(dx, dy);
+    this.canvasManager.redrawAll(this.historyManager.getStrokes());
   }
 
   updateZoomDisplay() {
@@ -688,7 +698,22 @@ class WhiteboardApp {
         e.preventDefault();
         this.canvasManager.fitToContent(this.historyManager.getStrokes());
         this.canvasManager.redrawAll(this.historyManager.getStrokes());
-        this.updateZoomDisplay();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        this.canvasManager.panBy(e.shiftKey ? 120 : 45, 0);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        this.canvasManager.panBy(e.shiftKey ? -120 : -45, 0);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this.canvasManager.panBy(0, e.shiftKey ? 120 : 45);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.canvasManager.panBy(0, e.shiftKey ? -120 : -45);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
       } else if (key === 'g') {
         document.getElementById('btn-grid-toggle').click();
       } else if (key === '[') {
