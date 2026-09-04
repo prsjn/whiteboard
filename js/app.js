@@ -37,6 +37,13 @@ class WhiteboardApp {
     this.deletedStrokesSession = [];
     this.lastEraserPos = null;
 
+    // Selection & Move State
+    this.selectedStrokes = [];
+    this.selectionBBox = null;
+    this.selectionDragMode = null; // 'move' | 'marquee' | null
+    this.dragStartWorld = null;
+    this.currentDragOffset = { dx: 0, dy: 0 };
+
     // DOM Elements
     this.container = document.getElementById('canvas-container');
     this.gridCanvas = document.getElementById('grid-canvas');
@@ -51,6 +58,11 @@ class WhiteboardApp {
     this.customColorPreview = document.getElementById('custom-color-preview');
     this.btnUndo = document.getElementById('btn-undo');
     this.btnRedo = document.getElementById('btn-redo');
+
+    // Floating Selection Action Bar Elements
+    this.selectionOverlayBar = document.getElementById('selection-overlay-bar');
+    this.btnDeleteSelected = document.getElementById('btn-delete-selected');
+    this.btnDeselect = document.getElementById('btn-deselect');
 
     // Zoom & Viewport Dock Elements
     this.zoomPercentage = document.getElementById('zoom-percentage');
@@ -83,6 +95,10 @@ class WhiteboardApp {
     // Redraw on window resize
     this.canvasManager.setResizeCallback(() => {
       this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+        this.updateSelectionUI();
+      }
     });
 
     // Restore previous session if exists
@@ -152,7 +168,7 @@ class WhiteboardApp {
       return;
     }
 
-    // Only handle primary button for drawing
+    // Only handle primary button for drawing / selecting
     if (e.button !== 0) return;
 
     this.isDrawing = true;
@@ -160,6 +176,70 @@ class WhiteboardApp {
 
     const rect = this.canvasManager.getRect();
     const transform = this.canvasManager.getViewTransform();
+
+    // Select & Move mode: click or marquee selection and live displacement
+    if (this.currentTool === 'select') {
+      const world = this.canvasManager.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      this.dragStartWorld = { x: world.x, y: world.y };
+      this.currentDragOffset = { dx: 0, dy: 0 };
+
+      // 1. Check if clicking inside already selected bounding box to initiate move
+      const isInsideSelection = this.selectedStrokes.length > 0 &&
+        StrokeEngine.isPointInBox(world.x, world.y, this.selectionBBox, 8 / this.canvasManager.zoom);
+
+      if (isInsideSelection) {
+        this.selectionDragMode = 'move';
+        this.container.classList.add('is-moving-selection');
+        if (this.selectionOverlayBar) this.selectionOverlayBar.style.display = 'none';
+        this.canvasManager.redrawAllExcept(this.historyManager.getStrokes(), this.selectedStrokes);
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, this.currentDragOffset);
+        return;
+      }
+
+      // 2. Check if clicking directly on a stroke to select it
+      const strokes = this.historyManager.getStrokes();
+      let hitStroke = null;
+      const hitTolerance = Math.max(8 / this.canvasManager.zoom, 4);
+
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        if (StrokeEngine.intersectsStroke(strokes[i], world.x, world.y, hitTolerance)) {
+          hitStroke = strokes[i];
+          break;
+        }
+      }
+
+      if (hitStroke) {
+        if (e.shiftKey) {
+          const idx = this.selectedStrokes.findIndex(s => s.id === hitStroke.id);
+          if (idx !== -1) {
+            this.selectedStrokes.splice(idx, 1);
+          } else {
+            this.selectedStrokes.push(hitStroke);
+          }
+        } else {
+          const alreadySelected = this.selectedStrokes.some(s => s.id === hitStroke.id);
+          if (!alreadySelected) {
+            this.selectedStrokes = [hitStroke];
+          }
+        }
+
+        this.selectionBBox = StrokeEngine.getStrokesBoundingBox(this.selectedStrokes, 6);
+        this.selectionDragMode = 'move';
+        this.container.classList.add('is-moving-selection');
+        if (this.selectionOverlayBar) this.selectionOverlayBar.style.display = 'none';
+        this.canvasManager.redrawAllExcept(this.historyManager.getStrokes(), this.selectedStrokes);
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, this.currentDragOffset);
+        return;
+      }
+
+      // 3. Clicked empty space: clear selection unless Shift is held, and start marquee drag
+      if (!e.shiftKey) {
+        this.clearSelection();
+      }
+      this.selectionDragMode = 'marquee';
+      this.container.classList.add('is-marquee-selecting');
+      return;
+    }
 
     // Laser pointer mode: ephemeral glowing trail in world space
     if (this.currentTool === 'laser') {
@@ -238,6 +318,38 @@ class WhiteboardApp {
       this.lastPanPos = { x: e.clientX, y: e.clientY };
       this.canvasManager.panBy(dx, dy);
       this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+        this.updateSelectionUI();
+      }
+      return;
+    }
+
+    // Select Tool Move / Hover handling
+    if (this.currentTool === 'select') {
+      const rect = this.canvasManager.getRect();
+      const world = this.canvasManager.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+
+      if (!this.selectionDragMode) {
+        // Update hover cursor when over selected bounding box
+        const isHovering = this.selectedStrokes.length > 0 &&
+          StrokeEngine.isPointInBox(world.x, world.y, this.selectionBBox, 6 / this.canvasManager.zoom);
+        this.container.classList.toggle('is-hovering-selection', isHovering);
+        return;
+      }
+
+      if (this.selectionDragMode === 'move') {
+        const dx = world.x - this.dragStartWorld.x;
+        const dy = world.y - this.dragStartWorld.y;
+        this.currentDragOffset = { dx, dy };
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, this.currentDragOffset);
+        return;
+      }
+
+      if (this.selectionDragMode === 'marquee') {
+        this.canvasManager.renderMarquee(this.dragStartWorld, world);
+        return;
+      }
       return;
     }
 
@@ -317,6 +429,72 @@ class WhiteboardApp {
       if (e && e.pointerId && this.draftCanvas.hasPointerCapture(e.pointerId)) {
         this.draftCanvas.releasePointerCapture(e.pointerId);
       }
+      return;
+    }
+
+    // Select Tool Finalization
+    if (this.currentTool === 'select') {
+      this.isDrawing = false;
+      if (e && e.pointerId && this.draftCanvas.hasPointerCapture(e.pointerId)) {
+        this.draftCanvas.releasePointerCapture(e.pointerId);
+      }
+      this.container.classList.remove('is-moving-selection', 'is-marquee-selecting');
+
+      const rect = this.canvasManager.getRect();
+      const world = this.canvasManager.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+
+      if (this.selectionDragMode === 'move') {
+        const dx = this.currentDragOffset.dx;
+        const dy = this.currentDragOffset.dy;
+
+        if (Math.hypot(dx, dy) > 1 && this.selectedStrokes.length > 0) {
+          for (const stroke of this.selectedStrokes) {
+            StrokeEngine.offsetStroke(stroke, dx, dy);
+            this.historyManager.computeBoundingBox(stroke);
+          }
+          this.historyManager.recordStrokeMove(this.selectedStrokes, dx, dy);
+        }
+
+        this.selectionBBox = StrokeEngine.getStrokesBoundingBox(this.selectedStrokes, 6);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+        this.updateSelectionUI();
+      } else if (this.selectionDragMode === 'marquee') {
+        if (this.dragStartWorld) {
+          const minX = Math.min(this.dragStartWorld.x, world.x);
+          const maxX = Math.max(this.dragStartWorld.x, world.x);
+          const minY = Math.min(this.dragStartWorld.y, world.y);
+          const maxY = Math.max(this.dragStartWorld.y, world.y);
+          const boxW = maxX - minX;
+          const boxH = maxY - minY;
+
+          if (boxW > 3 || boxH > 3) {
+            const marqueeBox = { minX, maxX, minY, maxY };
+            const strokes = this.historyManager.getStrokes();
+            const matched = strokes.filter(s => StrokeEngine.intersectsBox(s, marqueeBox));
+
+            if (e.shiftKey) {
+              const currentIds = new Set(this.selectedStrokes.map(s => s.id));
+              for (const m of matched) {
+                if (!currentIds.has(m.id)) {
+                  this.selectedStrokes.push(m);
+                }
+              }
+            } else {
+              this.selectedStrokes = matched;
+            }
+
+            this.selectionBBox = StrokeEngine.getStrokesBoundingBox(this.selectedStrokes, 6);
+          }
+        }
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+        this.updateSelectionUI();
+      }
+
+      this.selectionDragMode = null;
+      this.dragStartWorld = null;
+      this.currentDragOffset = { dx: 0, dy: 0 };
+      this.resetPressureBadge();
       return;
     }
 
@@ -471,6 +649,10 @@ class WhiteboardApp {
     if (e.shiftKey) {
       this.canvasManager.panBy(-e.deltaY, 0);
       this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+        this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+        this.updateSelectionUI();
+      }
       return;
     }
 
@@ -481,6 +663,10 @@ class WhiteboardApp {
     const dy = -e.deltaY;
     this.canvasManager.panBy(dx, dy);
     this.canvasManager.redrawAll(this.historyManager.getStrokes());
+    if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+      this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+      this.updateSelectionUI();
+    }
   }
 
   updateZoomDisplay() {
@@ -490,12 +676,14 @@ class WhiteboardApp {
   }
 
   updatePressureBadge(pressure, pointerType) {
+    if (!this.pressureText) return;
     const percentage = Math.round(pressure * 100);
     const typeLabel = pointerType === 'pen' ? 'Stylus' : 'Velocity';
     this.pressureText.textContent = `${typeLabel}: ${percentage}%`;
   }
 
   resetPressureBadge() {
+    if (!this.pressureText) return;
     this.pressureText.textContent = 'Stylus / Mouse Ready';
   }
 
@@ -571,12 +759,101 @@ class WhiteboardApp {
     document.getElementById('btn-shortcuts').addEventListener('click', () => {
       this.modalShortcuts.showModal();
     });
+
+    // Selection Overlay Actions
+    if (this.btnDeleteSelected) {
+      this.btnDeleteSelected.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteSelectedStrokes();
+      });
+    }
+
+    if (this.btnDeselect) {
+      this.btnDeselect.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.clearSelection();
+      });
+    }
+  }
+
+  updateSelectionUI() {
+    if (
+      this.currentTool === 'select' &&
+      this.selectedStrokes.length > 0 &&
+      this.selectionBBox &&
+      !this.selectionDragMode
+    ) {
+      const centerWorldX = this.selectionBBox.minX + this.selectionBBox.width / 2;
+      const screenPos = this.canvasManager.worldToScreen(centerWorldX, this.selectionBBox.minY);
+      this.selectionOverlayBar.style.left = `${Math.round(screenPos.x)}px`;
+      this.selectionOverlayBar.style.top = `${Math.round(Math.max(screenPos.y - 12, 60))}px`;
+      this.selectionOverlayBar.style.display = 'flex';
+    } else if (this.selectionOverlayBar) {
+      this.selectionOverlayBar.style.display = 'none';
+    }
   }
 
   setTool(tool) {
+    if (tool !== 'select') {
+      this.clearSelection();
+    }
     this.currentTool = tool;
     this.container.setAttribute('data-tool', tool);
     this.draftCanvas.setAttribute('data-tool', tool);
+
+    if (tool === 'select' && this.selectedStrokes.length > 0) {
+      this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+      this.updateSelectionUI();
+    }
+  }
+
+  clearSelection() {
+    this.selectedStrokes = [];
+    this.selectionBBox = null;
+    this.selectionDragMode = null;
+    this.currentDragOffset = { dx: 0, dy: 0 };
+    if (this.selectionOverlayBar) {
+      this.selectionOverlayBar.style.display = 'none';
+    }
+    this.container.classList.remove('is-hovering-selection', 'is-moving-selection', 'is-marquee-selecting');
+    this.canvasManager.clearDraft();
+  }
+
+  deleteSelectedStrokes() {
+    if (!this.selectedStrokes || this.selectedStrokes.length === 0) return;
+    const strokes = this.historyManager.getStrokes();
+    const deletedItems = [];
+
+    for (const selected of this.selectedStrokes) {
+      const idx = strokes.findIndex(s => s.id === selected.id);
+      if (idx !== -1) {
+        deletedItems.push({ stroke: strokes[idx], index: idx });
+        strokes.splice(idx, 1);
+      }
+    }
+
+    if (deletedItems.length > 0) {
+      this.historyManager.recordStrokeDeletion(deletedItems);
+    }
+
+    this.clearSelection();
+    this.canvasManager.redrawAll(this.historyManager.getStrokes());
+  }
+
+  nudgeSelectedStrokes(screenDx, screenDy) {
+    if (!this.selectedStrokes || this.selectedStrokes.length === 0) return;
+    const worldDx = screenDx / this.canvasManager.zoom;
+    const worldDy = screenDy / this.canvasManager.zoom;
+
+    for (const stroke of this.selectedStrokes) {
+      StrokeEngine.offsetStroke(stroke, worldDx, worldDy);
+      this.historyManager.computeBoundingBox(stroke);
+    }
+    this.historyManager.recordStrokeMove(this.selectedStrokes, worldDx, worldDy);
+    this.selectionBBox = StrokeEngine.getStrokesBoundingBox(this.selectedStrokes, 6);
+    this.canvasManager.redrawAll(this.historyManager.getStrokes());
+    this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+    this.updateSelectionUI();
   }
 
   setColor(color) {
@@ -600,6 +877,17 @@ class WhiteboardApp {
     const remainingStrokes = this.historyManager.undo();
     if (remainingStrokes !== null) {
       this.canvasManager.redrawAll(remainingStrokes);
+      if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+        const ids = new Set(remainingStrokes.map(s => s.id));
+        this.selectedStrokes = this.selectedStrokes.filter(s => ids.has(s.id));
+        this.selectionBBox = StrokeEngine.getStrokesBoundingBox(this.selectedStrokes, 6);
+        if (this.selectedStrokes.length > 0) {
+          this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+          this.updateSelectionUI();
+        } else {
+          this.clearSelection();
+        }
+      }
     }
   }
 
@@ -607,6 +895,17 @@ class WhiteboardApp {
     const nextStrokes = this.historyManager.redo();
     if (nextStrokes !== null) {
       this.canvasManager.redrawAll(nextStrokes);
+      if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+        const ids = new Set(nextStrokes.map(s => s.id));
+        this.selectedStrokes = this.selectedStrokes.filter(s => ids.has(s.id));
+        this.selectionBBox = StrokeEngine.getStrokesBoundingBox(this.selectedStrokes, 6);
+        if (this.selectedStrokes.length > 0) {
+          this.canvasManager.renderSelectionOverlay(this.selectedStrokes, { dx: 0, dy: 0 });
+          this.updateSelectionUI();
+        } else {
+          this.clearSelection();
+        }
+      }
     }
   }
 
@@ -669,6 +968,15 @@ class WhiteboardApp {
       } else if (isCtrlOrCmd && key === 's') {
         e.preventDefault();
         this.modalExport.showModal();
+      } else if (key === 'v' || (!isCtrlOrCmd && key === 's')) {
+        this.triggerToolClick('select');
+      } else if (key === 'escape') {
+        this.clearSelection();
+      } else if (key === 'delete' || key === 'backspace') {
+        if (this.selectedStrokes.length > 0) {
+          e.preventDefault();
+          this.deleteSelectedStrokes();
+        }
       } else if (key === 'p') {
         this.triggerToolClick('pen');
       } else if (key === 'b') {
@@ -700,20 +1008,36 @@ class WhiteboardApp {
         this.canvasManager.redrawAll(this.historyManager.getStrokes());
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        this.canvasManager.panBy(e.shiftKey ? 120 : 45, 0);
-        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+          this.nudgeSelectedStrokes(e.shiftKey ? -25 : -5, 0);
+        } else {
+          this.canvasManager.panBy(e.shiftKey ? 120 : 45, 0);
+          this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        this.canvasManager.panBy(e.shiftKey ? -120 : -45, 0);
-        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+          this.nudgeSelectedStrokes(e.shiftKey ? 25 : 5, 0);
+        } else {
+          this.canvasManager.panBy(e.shiftKey ? -120 : -45, 0);
+          this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        }
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        this.canvasManager.panBy(0, e.shiftKey ? 120 : 45);
-        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+          this.nudgeSelectedStrokes(0, e.shiftKey ? -25 : -5);
+        } else {
+          this.canvasManager.panBy(0, e.shiftKey ? 120 : 45);
+          this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        this.canvasManager.panBy(0, e.shiftKey ? -120 : -45);
-        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        if (this.currentTool === 'select' && this.selectedStrokes.length > 0) {
+          this.nudgeSelectedStrokes(0, e.shiftKey ? 25 : 5);
+        } else {
+          this.canvasManager.panBy(0, e.shiftKey ? -120 : -45);
+          this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        }
       } else if (key === 'g') {
         document.getElementById('btn-grid-toggle').click();
       } else if (key === '[') {
@@ -751,6 +1075,7 @@ class WhiteboardApp {
     });
 
     document.getElementById('btn-confirm-clear').addEventListener('click', () => {
+      this.clearSelection();
       this.historyManager.clearAll();
       this.canvasManager.clearMain();
       this.modalClear.close();

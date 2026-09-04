@@ -508,6 +508,119 @@ export class CanvasManager {
   }
 
   /**
+   * Redraw all strokes except a specified set (used during active selection dragging)
+   */
+  redrawAllExcept(strokes, excludedStrokes) {
+    this.mainCtx.resetTransform();
+    this.mainCtx.scale(this.dpr, this.dpr);
+    this.mainCtx.clearRect(0, 0, this.width, this.height);
+    if (!strokes) return;
+    const excludedIds = new Set(excludedStrokes.map(s => s.id));
+    this.applyTransform(this.mainCtx);
+    for (const stroke of strokes) {
+      if (!excludedIds.has(stroke.id)) {
+        this.drawStrokeToContext(this.mainCtx, stroke);
+      }
+    }
+  }
+
+  /**
+   * Render selection bounding box, handles, and optionally translated preview strokes
+   */
+  renderSelectionOverlay(selectedStrokes, offset = { dx: 0, dy: 0 }) {
+    this.clearDraft();
+    if (!selectedStrokes || selectedStrokes.length === 0) return;
+
+    const bbox = StrokeEngine.getStrokesBoundingBox(selectedStrokes, 6);
+    if (!bbox) return;
+
+    const ctx = this.draftCtx;
+    this.applyTransform(ctx);
+
+    const isDragging = offset.dx !== 0 || offset.dy !== 0;
+
+    // If actively displacing, render moved strokes on the draft layer
+    if (isDragging) {
+      ctx.save();
+      ctx.translate(offset.dx, offset.dy);
+      for (const stroke of selectedStrokes) {
+        StrokeEngine.renderStroke(ctx, stroke);
+      }
+      ctx.restore();
+    }
+
+    // Translated bounding box coordinates
+    const x = bbox.minX + offset.dx;
+    const y = bbox.minY + offset.dy;
+    const w = bbox.width;
+    const h = bbox.height;
+
+    ctx.save();
+    // Subtle translucent tint fill
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+    ctx.fillRect(x, y, w, h);
+
+    // High-visibility dashed selection outline
+    const dashSize = Math.max(4 / this.zoom, 2);
+    ctx.setLineDash([dashSize, dashSize]);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = Math.max(1.5 / this.zoom, 1);
+    ctx.strokeRect(x, y, w, h);
+
+    // Draw modern corner handles
+    ctx.setLineDash([]);
+    const handleSize = Math.max(7 / this.zoom, 4);
+    const halfH = handleSize / 2;
+    const corners = [
+      { cx: x, cy: y },
+      { cx: x + w, cy: y },
+      { cx: x, cy: y + h },
+      { cx: x + w, cy: y + h }
+    ];
+
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = Math.max(1.5 / this.zoom, 1);
+
+    for (const corner of corners) {
+      ctx.fillRect(corner.cx - halfH, corner.cy - halfH, handleSize, handleSize);
+      ctx.strokeRect(corner.cx - halfH, corner.cy - halfH, handleSize, handleSize);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Render dynamic selection marquee rectangle during box drag
+   */
+  renderMarquee(startWorld, currentWorld) {
+    this.clearDraft();
+    if (!startWorld || !currentWorld) return;
+
+    const minX = Math.min(startWorld.x, currentWorld.x);
+    const minY = Math.min(startWorld.y, currentWorld.y);
+    const w = Math.abs(currentWorld.x - startWorld.x);
+    const h = Math.abs(currentWorld.y - startWorld.y);
+
+    const ctx = this.draftCtx;
+    this.applyTransform(ctx);
+
+    ctx.save();
+    // Marquee fill
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.1)';
+    ctx.fillRect(minX, minY, w, h);
+
+    // Dashed border
+    const dashSize = Math.max(4 / this.zoom, 2);
+    ctx.setLineDash([dashSize, dashSize]);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = Math.max(1.5 / this.zoom, 1);
+    ctx.strokeRect(minX, minY, w, h);
+
+    ctx.restore();
+  }
+
+  /**
    * Clear the main committed drawing canvas
    */
   clearMain() {

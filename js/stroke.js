@@ -313,4 +313,123 @@ export class StrokeEngine {
 
     return false;
   }
+
+  /**
+   * Check if a stroke intersects or lies within an axis-aligned bounding box
+   */
+  static intersectsBox(stroke, box) {
+    if (!stroke || !stroke.points || stroke.points.length === 0 || !box) return false;
+
+    // Fast check: stroke bounding box vs selection box
+    const sBox = stroke.bbox;
+    if (sBox) {
+      if (
+        sBox.maxX < box.minX ||
+        sBox.minX > box.maxX ||
+        sBox.maxY < box.minY ||
+        sBox.minY > box.maxY
+      ) {
+        return false;
+      }
+    }
+
+    const points = stroke.points;
+    const n = points.length;
+
+    // Check if any point is inside the box
+    for (let i = 0; i < n; i++) {
+      const p = points[i];
+      if (p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY) {
+        return true;
+      }
+    }
+
+    // Check if any line segment intersects the 4 rectangle boundaries
+    const boxEdges = [
+      { x1: box.minX, y1: box.minY, x2: box.maxX, y2: box.minY },
+      { x1: box.maxX, y1: box.minY, x2: box.maxX, y2: box.maxY },
+      { x1: box.maxX, y1: box.maxY, x2: box.minX, y2: box.maxY },
+      { x1: box.minX, y1: box.maxY, x2: box.minX, y2: box.minY }
+    ];
+
+    const segsIntersect = (a1, a2, b1, b2) => {
+      const ccw = (A, B, C) => (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x);
+      return (ccw(a1, b1, b2) !== ccw(a2, b1, b2)) && (ccw(a1, a2, b1) !== ccw(a1, a2, b2));
+    };
+
+    for (let i = 0; i < n - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      for (const edge of boxEdges) {
+        if (segsIntersect(p1, p2, { x: edge.x1, y: edge.y1 }, { x: edge.x2, y: edge.y2 })) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Calculate composite bounding box enclosing an array of strokes
+   */
+  static getStrokesBoundingBox(strokes, padding = 8) {
+    if (!strokes || strokes.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let count = 0;
+
+    for (const stroke of strokes) {
+      if (!stroke.points || stroke.points.length === 0) continue;
+      count++;
+      for (const p of stroke.points) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+    }
+
+    if (count === 0 || minX === Infinity) return null;
+
+    return {
+      minX: minX - padding,
+      minY: minY - padding,
+      maxX: maxX + padding,
+      maxY: maxY + padding,
+      width: (maxX - minX) + padding * 2,
+      height: (maxY - minY) + padding * 2
+    };
+  }
+
+  /**
+   * Check if a point (x, y) is inside a bounding box
+   */
+  static isPointInBox(x, y, box, padding = 0) {
+    if (!box) return false;
+    return (
+      x >= box.minX - padding &&
+      x <= box.maxX + padding &&
+      y >= box.minY - padding &&
+      y <= box.maxY + padding
+    );
+  }
+
+  /**
+   * Offset all points in a stroke by delta (dx, dy)
+   */
+  static offsetStroke(stroke, dx, dy) {
+    if (!stroke || !stroke.points) return;
+    for (const p of stroke.points) {
+      p.x += dx;
+      p.y += dy;
+    }
+    if (stroke.bbox) {
+      stroke.bbox.minX += dx;
+      stroke.bbox.maxX += dx;
+      stroke.bbox.minY += dy;
+      stroke.bbox.maxY += dy;
+    }
+  }
 }
+

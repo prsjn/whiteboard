@@ -58,7 +58,29 @@ export class HistoryManager {
   }
 
   /**
-   * Undo the last action (add, delete, or clear)
+   * Record movement/displacement of strokes
+   */
+  recordStrokeMove(strokes, dx, dy) {
+    if (!strokes || strokes.length === 0 || (dx === 0 && dy === 0)) return;
+
+    this.undoStack.push({
+      type: 'move',
+      strokes: [...strokes],
+      dx,
+      dy
+    });
+
+    if (this.undoStack.length > this.maxDepth) {
+      this.undoStack.shift();
+    }
+
+    this.redoStack = [];
+    this.notifyStateChange();
+    this.saveToStorage();
+  }
+
+  /**
+   * Undo the last action (add, delete, move, or clear)
    */
   undo() {
     if (!this.canUndo()) return null;
@@ -78,6 +100,16 @@ export class HistoryManager {
       for (const item of sorted) {
         const insertIdx = Math.min(item.index, this.strokes.length);
         this.strokes.splice(insertIdx, 0, item.stroke);
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'move') {
+      // Reverse displacement
+      for (const stroke of action.strokes) {
+        for (const p of stroke.points) {
+          p.x -= action.dx;
+          p.y -= action.dy;
+        }
+        this.computeBoundingBox(stroke);
       }
       this.redoStack.push(action);
     } else if (action.type === 'clear') {
@@ -109,6 +141,16 @@ export class HistoryManager {
         if (idx !== -1) {
           this.strokes.splice(idx, 1);
         }
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'move') {
+      // Re-apply displacement
+      for (const stroke of action.strokes) {
+        for (const p of stroke.points) {
+          p.x += action.dx;
+          p.y += action.dy;
+        }
+        this.computeBoundingBox(stroke);
       }
       this.undoStack.push(action);
     } else if (action.type === 'clear') {

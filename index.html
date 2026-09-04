@@ -19,6 +19,25 @@
     <canvas id="grid-canvas" aria-hidden="true"></canvas>
     <canvas id="main-canvas" aria-label="Whiteboard Drawing Surface" role="img"></canvas>
     <canvas id="draft-canvas" aria-hidden="true"></canvas>
+
+    <!-- Floating Contextual Selection Action Bar -->
+    <div id="selection-overlay-bar" class="selection-overlay-bar" style="display: none;" aria-label="Selection Actions">
+      <button id="btn-delete-selected" class="selection-bar-btn btn-danger" title="Delete Selected Lines (Delete or Backspace)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"/>
+          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+        </svg>
+        <span>Delete</span>
+      </button>
+      <div class="selection-bar-divider"></div>
+      <button id="btn-deselect" class="selection-bar-btn" title="Deselect (Escape)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <!-- Dynamic Cursor Indicator -->
@@ -26,23 +45,6 @@
 
   <!-- Header Branding & Status Bar -->
   <header class="top-nav">
-    <div class="brand">
-      <div class="brand-logo">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m18 5-3-3L3 14l-2 7 7-2L20 7l-2-2Z"/>
-          <path d="m14 2 4 4"/>
-          <path d="M7 17l4-4"/>
-        </svg>
-      </div>
-      <div class="brand-info">
-        <h1 class="brand-title">Minimal Whiteboard</h1>
-        <span class="pressure-badge" id="pressure-indicator" title="Live pointer force">
-          <span class="pulse-dot"></span>
-          <span id="pressure-text">Stylus / Mouse Active</span>
-        </span>
-      </div>
-    </div>
-
     <!-- Quick Utility Bar -->
     <div class="top-actions">
       <button id="btn-grid-toggle" class="icon-btn" title="Toggle Grid (G)" aria-label="Toggle Grid">
@@ -82,13 +84,12 @@
 
       <div class="divider-v"></div>
 
-      <button id="btn-export" class="btn btn-primary" title="Export Drawing (Ctrl+S)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button id="btn-export" class="icon-btn btn-primary" title="Export Drawing (Ctrl+S)" aria-label="Export Drawing">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" x2="12" y1="15" y2="3"/>
         </svg>
-        <span>Export</span>
       </button>
     </div>
   </header>
@@ -97,6 +98,14 @@
   <nav class="floating-dock" id="main-toolbar" aria-label="Whiteboard Tools">
     <!-- Drawing Tools Group -->
     <div class="tool-group" role="radiogroup" aria-label="Drawing Tools">
+      <button class="dock-btn" data-tool="select" title="Select & Move (V or S)" role="radio" aria-checked="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 3 7 18 3-7 7-3L3 3z"/>
+          <path d="m13 13 6 6"/>
+        </svg>
+        <span class="btn-label">Select</span>
+      </button>
+
       <button class="dock-btn active" data-tool="pen" title="Precision Pen (P)" role="radio" aria-checked="true">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
@@ -284,6 +293,8 @@
         <button id="btn-close-shortcuts" class="icon-btn close-btn" aria-label="Close">✕</button>
       </div>
       <div class="shortcuts-grid">
+        <div class="shortcut-item"><kbd>V</kbd> / <kbd>S</kbd><span>Select & Move Lines</span></div>
+        <div class="shortcut-item"><kbd>Delete</kbd><span>Delete Selected Lines</span></div>
         <div class="shortcut-item"><kbd>P</kbd><span>Precision Pen</span></div>
         <div class="shortcut-item"><kbd>B</kbd><span>Expressive Brush</span></div>
         <div class="shortcut-item"><kbd>L</kbd><span>Laser Pointer</span></div>

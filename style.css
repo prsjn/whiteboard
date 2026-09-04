@@ -117,6 +117,11 @@ html, body {
   cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%20fill%3D%27none%27%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%2710%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.2%27%20stroke-dasharray%3D%272%202%27%20opacity%3D%270.7%27/%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%276%27%20fill%3D%27%23f43f5e%27%20fill-opacity%3D%270.25%27/%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%273.5%27%20fill%3D%27%23f43f5e%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%271%27/%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%271.2%27%20fill%3D%27%23ffffff%27/%3E%3Cline%20x1%3D%2716%27%20y1%3D%273%27%20x2%3D%2716%27%20y2%3D%276%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3Cline%20x1%3D%2716%27%20y1%3D%2726%27%20x2%3D%2716%27%20y2%3D%2729%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3Cline%20x1%3D%273%27%20y1%3D%2716%27%20x2%3D%276%27%20y2%3D%2716%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3Cline%20x1%3D%2726%27%20y1%3D%2716%27%20x2%3D%2729%27%20y2%3D%2716%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3C/svg%3E") 16 16, crosshair;
 }
 
+#canvas-container[data-tool="select"],
+#canvas-container[data-tool="select"] canvas {
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%20fill%3D%27none%27%3E%3Cpath%20d%3D%27M3%203%20L10%2024%20L14%2015%20L23%2011%20Z%27%20fill%3D%27rgba%280%2C0%2C0%2C0.35%29%27%20transform%3D%27translate%281.5%2C%202%29%27/%3E%3Cpath%20d%3D%27M3%203%20L10%2024%20L14%2015%20L23%2011%20Z%27%20fill%3D%27%230f172a%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%271.5%27%20stroke-linejoin%3D%27round%27/%3E%3Cpath%20d%3D%27M3%203%20L9%2015%20L14%2015%20L15%209%20Z%27%20fill%3D%27%2338bdf8%27/%3E%3C/svg%3E") 3 3, default;
+}
+
 #canvas-container[data-tool="pan"],
 #canvas-container[data-tool="pan"] canvas {
   cursor: grab !important;
@@ -125,6 +130,21 @@ html, body {
 #canvas-container.is-panning,
 #canvas-container.is-panning canvas {
   cursor: grabbing !important;
+}
+
+#canvas-container.is-hovering-selection,
+#canvas-container.is-hovering-selection canvas {
+  cursor: move !important;
+}
+
+#canvas-container.is-moving-selection,
+#canvas-container.is-moving-selection canvas {
+  cursor: move !important;
+}
+
+#canvas-container.is-marquee-selecting,
+#canvas-container.is-marquee-selecting canvas {
+  cursor: crosshair !important;
 }
 
 #canvas-container canvas {
@@ -151,6 +171,77 @@ html, body {
   pointer-events: auto;
 }
 
+/* Floating Selection Action Bar */
+.selection-overlay-bar {
+  position: absolute;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: var(--border-radius-pill);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 14px rgba(56, 189, 248, 0.25);
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  user-select: none;
+  animation: pop-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -85%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+.selection-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-family-base);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--border-radius-pill);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.selection-bar-btn:hover {
+  background: var(--hover-bg);
+}
+
+.selection-bar-btn:active {
+  transform: scale(0.94);
+}
+
+.selection-bar-btn.btn-danger {
+  color: #fb7185;
+}
+
+.selection-bar-btn.btn-danger:hover {
+  background: rgba(244, 63, 94, 0.18);
+  color: #f43f5e;
+}
+
+.selection-bar-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border-subtle);
+  margin: 0 2px;
+}
+
 /* ==========================================================================
    Tool Cursors: Pure Hardware SVG Mode (No Duplicate Overlays)
    ========================================================================== */
@@ -170,7 +261,7 @@ html, body {
   left: 20px;
   right: 20px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   z-index: 10;
   pointer-events: none;
@@ -241,8 +332,8 @@ html, body {
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 3px;
+  padding: 4px 6px;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -254,9 +345,9 @@ html, body {
 
 .divider-v {
   width: 1px;
-  height: 20px;
+  height: 16px;
   background-color: var(--border-subtle);
-  margin: 0 4px;
+  margin: 0 2px;
 }
 
 /* ==========================================================================
@@ -500,8 +591,8 @@ html, body {
 
 /* Generic Icon Buttons */
 .icon-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: transparent;
   border: none;
@@ -516,7 +607,19 @@ html, body {
 .icon-btn:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
-  transform: scale(1.05);
+  transform: scale(1.06);
+}
+
+.icon-btn.btn-primary {
+  background: var(--accent-primary);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.icon-btn.btn-primary:hover {
+  background: #0284c7;
+  color: #fff;
+  transform: scale(1.06);
 }
 
 /* Primary and Solid Buttons */
