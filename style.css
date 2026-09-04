@@ -96,6 +96,27 @@ html, body {
   cursor: crosshair;
 }
 
+/* Tool-Specific Hardware Cursors */
+#canvas-container[data-tool="pen"],
+#canvas-container[data-tool="pen"] canvas {
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%20fill%3D%27none%27%3E%3Cpath%20d%3D%27M2%202%20L9%204%20L14%209%20L25%2020%20L20%2025%20L9%2014%20L4%209%20Z%27%20fill%3D%27rgba%280%2C0%2C0%2C0.35%29%27%20transform%3D%27translate%281%2C%201.5%29%27/%3E%3Cpath%20d%3D%27M12%2011%20L23%2022%20L20%2025%20L9%2014%20Z%27%20fill%3D%27%231e293b%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%271.2%27%20stroke-linejoin%3D%27round%27/%3E%3Cpath%20d%3D%27M2%202%20L9%204%20L12%2011%20L11%2012%20L4%209%20Z%27%20fill%3D%27%23f1f5f9%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271.2%27%20stroke-linejoin%3D%27round%27/%3E%3Cline%20x1%3D%272%27%20y1%3D%272%27%20x2%3D%278%27%20y2%3D%278%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271.2%27%20stroke-linecap%3D%27round%27/%3E%3Ccircle%20cx%3D%278%27%20cy%3D%278%27%20r%3D%271.2%27%20fill%3D%27%230f172a%27/%3E%3Cpath%20d%3D%27M13%2010%20L10%2013%27%20stroke%3D%27%2338bdf8%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3C/svg%3E") 2 2, crosshair;
+}
+
+#canvas-container[data-tool="brush"],
+#canvas-container[data-tool="brush"] canvas {
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%20fill%3D%27none%27%3E%3Cpath%20d%3D%27M2%202%20L8%204%20L12%209%20L24%2021%20L21%2024%20L9%2012%20L4%208%20Z%27%20fill%3D%27rgba%280%2C0%2C0%2C0.35%29%27%20transform%3D%27translate%281%2C%201.5%29%27/%3E%3Cpath%20d%3D%27M13%2011%20L25%2023%20L22%2026%20L10%2014%20Z%27%20fill%3D%27%237c2d12%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%271.2%27%20stroke-linejoin%3D%27round%27/%3E%3Cpath%20d%3D%27M10%208%20L14%2012%20L12%2014%20L8%2010%20Z%27%20fill%3D%27%2394a3b8%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271.2%27%20stroke-linejoin%3D%27round%27/%3E%3Cpath%20d%3D%27M2%202%20C4%204%206%205%208%207%20L7%208%20C5%206%204%204%202%202%20Z%27%20fill%3D%27%23818cf8%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271%27/%3E%3Cpath%20d%3D%27M2%202%20L8%207%20L7%208%20L2%202%20Z%27%20fill%3D%27%236366f1%27/%3E%3C/svg%3E") 2 2, crosshair;
+}
+
+#canvas-container[data-tool="eraser"],
+#canvas-container[data-tool="eraser"] canvas {
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%20fill%3D%27none%27%3E%3Cpath%20d%3D%27M4%2022%20L12%2014%20L20%206%20L26%2012%20L18%2020%20L10%2028%20Z%27%20fill%3D%27rgba%280%2C0%2C0%2C0.35%29%27%20transform%3D%27translate%281%2C%201.5%29%27/%3E%3Cpath%20d%3D%27M12%2014%20L20%206%20L26%2012%20L18%2020%20Z%27%20fill%3D%27%23f8fafc%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271.5%27%20stroke-linejoin%3D%27round%27/%3E%3Cpath%20d%3D%27M4%2022%20L12%2014%20L18%2020%20L10%2028%20Z%27%20fill%3D%27%23fb7185%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271.5%27%20stroke-linejoin%3D%27round%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2714%27%20x2%3D%2718%27%20y2%3D%2720%27%20stroke%3D%27%230f172a%27%20stroke-width%3D%271.5%27/%3E%3C/svg%3E") 4 22, crosshair;
+}
+
+#canvas-container[data-tool="laser"],
+#canvas-container[data-tool="laser"] canvas {
+  cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2732%27%20height%3D%2732%27%20viewBox%3D%270%200%2032%2032%27%20fill%3D%27none%27%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%2710%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.2%27%20stroke-dasharray%3D%272%202%27%20opacity%3D%270.7%27/%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%276%27%20fill%3D%27%23f43f5e%27%20fill-opacity%3D%270.25%27/%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%273.5%27%20fill%3D%27%23f43f5e%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%271%27/%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%271.2%27%20fill%3D%27%23ffffff%27/%3E%3Cline%20x1%3D%2716%27%20y1%3D%273%27%20x2%3D%2716%27%20y2%3D%276%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3Cline%20x1%3D%2716%27%20y1%3D%2726%27%20x2%3D%2716%27%20y2%3D%2729%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3Cline%20x1%3D%273%27%20y1%3D%2716%27%20x2%3D%276%27%20y2%3D%2716%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3Cline%20x1%3D%2726%27%20y1%3D%2716%27%20x2%3D%2729%27%20y2%3D%2716%27%20stroke%3D%27%23f43f5e%27%20stroke-width%3D%271.5%27%20stroke-linecap%3D%27round%27/%3E%3C/svg%3E") 16 16, crosshair;
+}
+
 #canvas-container canvas {
   position: absolute;
   top: 0;
@@ -121,29 +142,13 @@ html, body {
 }
 
 /* ==========================================================================
-   Dynamic Brush / Stylus Cursor
+   Tool Cursors: Pure Hardware SVG Mode (No Duplicate Overlays)
    ========================================================================== */
 
 .brush-cursor {
-  position: fixed;
-  pointer-events: none;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 4px rgba(0, 0, 0, 0.2);
-  transform: translate(-50%, -50%);
-  z-index: 999;
-  opacity: 0;
-  transition: opacity 120ms ease, border-color 150ms ease;
+  display: none !important;
 }
 
-[data-theme="light"] .brush-cursor {
-  border-color: rgba(15, 23, 42, 0.85);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
-}
-
-.brush-cursor.active {
-  opacity: 1;
-}
 
 /* ==========================================================================
    Top Header Navigation

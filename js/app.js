@@ -77,6 +77,8 @@ class WhiteboardApp {
     this.bindToolbarEvents();
     this.bindKeyboardShortcuts();
     this.bindModals();
+    this.container.setAttribute('data-tool', this.currentTool);
+    this.draftCanvas.setAttribute('data-tool', this.currentTool);
     this.updateCursorVisual();
     this.updateSizeDisplay();
   }
@@ -306,34 +308,28 @@ class WhiteboardApp {
   }
 
   updateCursorPosition(x, y) {
-    this.brushCursor.style.left = `${x}px`;
-    this.brushCursor.style.top = `${y}px`;
+    // Pure hardware cursor mode: driven by browser OS cursor
   }
 
   updateCursorVisual() {
-    const size = Math.max(this.currentSize, 4);
-    this.brushCursor.style.width = `${size}px`;
-    this.brushCursor.style.height = `${size}px`;
+    // Pure hardware SVG cursor: automatically updated via [data-tool] attribute on canvas
+  }
 
-    if (this.currentTool === 'laser') {
-      const laserColor = (this.currentColor === '#f8fafc' || this.currentColor === '#0f172a')
-        ? '#f43f5e'
-        : this.currentColor;
-      this.brushCursor.style.borderColor = laserColor;
-      this.brushCursor.style.backgroundColor = 'rgba(244, 63, 94, 0.4)';
-      this.brushCursor.style.boxShadow = `0 0 10px ${laserColor}`;
-    } else if (this.currentTool === 'eraser') {
-      const r = Math.max(this.currentSize * 2.5, 12);
-      this.brushCursor.style.width = `${r * 2}px`;
-      this.brushCursor.style.height = `${r * 2}px`;
-      this.brushCursor.style.borderColor = 'var(--danger)';
-      this.brushCursor.style.backgroundColor = 'rgba(244, 63, 94, 0.12)';
-      this.brushCursor.style.boxShadow = '0 0 0 1px rgba(244, 63, 94, 0.35)';
-    } else {
-      this.brushCursor.style.borderColor = this.currentColor;
-      this.brushCursor.style.backgroundColor = 'transparent';
-      this.brushCursor.style.boxShadow = 'none';
+  getTintedColor(color, alpha) {
+    if (color && color.startsWith('#')) {
+      let r = 0, g = 0, b = 0;
+      if (color.length === 4) {
+        r = parseInt(color[1] + color[1], 16);
+        g = parseInt(color[2] + color[2], 16);
+        b = parseInt(color[3] + color[3], 16);
+      } else if (color.length === 7) {
+        r = parseInt(color.slice(1, 3), 16);
+        g = parseInt(color.slice(3, 5), 16);
+        b = parseInt(color.slice(5, 7), 16);
+      }
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
+    return 'transparent';
   }
 
   updatePressureBadge(pressure, pointerType) {
@@ -422,6 +418,8 @@ class WhiteboardApp {
 
   setTool(tool) {
     this.currentTool = tool;
+    this.container.setAttribute('data-tool', tool);
+    this.draftCanvas.setAttribute('data-tool', tool);
     this.updateCursorVisual();
   }
 
