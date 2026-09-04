@@ -72,7 +72,6 @@ class WhiteboardApp {
     this.btnZoomFit = document.getElementById('btn-zoom-fit');
 
     // Modals
-    this.modalClear = document.getElementById('modal-clear-confirm');
     this.modalExport = document.getElementById('modal-export');
     this.modalShortcuts = document.getElementById('modal-shortcuts');
 
@@ -744,10 +743,16 @@ class WhiteboardApp {
       this.toggleTheme();
     });
 
-    // Clear confirmation trigger
+    // Clear action trigger
     document.getElementById('btn-clear').addEventListener('click', () => {
-      if (this.historyManager.getStrokes().length === 0) return;
-      this.modalClear.showModal();
+      if (this.selectedStrokes && this.selectedStrokes.length > 0) {
+        this.deleteSelectedStrokes();
+      } else {
+        if (this.historyManager.getStrokes().length === 0) return;
+        this.clearSelection();
+        this.historyManager.clearAll();
+        this.canvasManager.clearMain();
+      }
     });
 
     // Export trigger
@@ -1069,18 +1074,6 @@ class WhiteboardApp {
      ======================================================================== */
 
   bindModals() {
-    // Clear Modal
-    document.getElementById('btn-cancel-clear').addEventListener('click', () => {
-      this.modalClear.close();
-    });
-
-    document.getElementById('btn-confirm-clear').addEventListener('click', () => {
-      this.clearSelection();
-      this.historyManager.clearAll();
-      this.canvasManager.clearMain();
-      this.modalClear.close();
-    });
-
     // Export Modal
     document.getElementById('btn-cancel-export').addEventListener('click', () => {
       this.modalExport.close();
