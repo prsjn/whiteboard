@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Minimal Whiteboard — Smooth & Pressure-Sensitive</title>
+  <meta name="description" content="A minimal, zero-backend, client-side whiteboard with ultra-smooth pen and brush dynamics and hardware pressure sensitivity.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+  <!-- Multi-layer Canvas Stack -->
+  <div id="canvas-container">
+    <canvas id="grid-canvas" aria-hidden="true"></canvas>
+    <canvas id="main-canvas" aria-label="Whiteboard Drawing Surface" role="img"></canvas>
+    <canvas id="draft-canvas" aria-hidden="true"></canvas>
+  </div>
+
+  <!-- Dynamic Cursor Indicator -->
+  <div id="brush-cursor" class="brush-cursor" aria-hidden="true"></div>
+
+  <!-- Header Branding & Status Bar -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m18 5-3-3L3 14l-2 7 7-2L20 7l-2-2Z"/>
+          <path d="m14 2 4 4"/>
+          <path d="M7 17l4-4"/>
+        </svg>
+      </div>
+      <div class="brand-info">
+        <h1 class="brand-title">Minimal Whiteboard</h1>
+        <span class="pressure-badge" id="pressure-indicator" title="Live pointer force">
+          <span class="pulse-dot"></span>
+          <span id="pressure-text">Stylus / Mouse Active</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Quick Utility Bar -->
+    <div class="top-actions">
+      <button id="btn-grid-toggle" class="icon-btn" title="Toggle Grid (G)" aria-label="Toggle Grid">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2"/>
+          <path d="M3 9h18"/>
+          <path d="M3 15h18"/>
+          <path d="M9 3v18"/>
+          <path d="M15 3v18"/>
+        </svg>
+      </button>
+
+      <button id="btn-theme-toggle" class="icon-btn" title="Toggle Light/Dark Theme" aria-label="Toggle Theme">
+        <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2"/>
+          <path d="M12 20v2"/>
+          <path d="m4.93 4.93 1.41 1.41"/>
+          <path d="m17.66 17.66 1.41 1.41"/>
+          <path d="M2 12h2"/>
+          <path d="M20 12h2"/>
+          <path d="m6.34 17.66-1.41 1.41"/>
+          <path d="m19.07 4.93-1.41 1.41"/>
+        </svg>
+        <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </button>
+
+      <button id="btn-shortcuts" class="icon-btn" title="Keyboard Shortcuts (?)" aria-label="Shortcuts">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <path d="M12 17h.01"/>
+        </svg>
+      </button>
+
+      <div class="divider-v"></div>
+
+      <button id="btn-export" class="btn btn-primary" title="Export Drawing (Ctrl+S)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" x2="12" y1="15" y2="3"/>
+        </svg>
+        <span>Export</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Floating Island Toolbar -->
+  <nav class="floating-dock" id="main-toolbar" aria-label="Whiteboard Tools">
+    <!-- Drawing Tools Group -->
+    <div class="tool-group" role="radiogroup" aria-label="Drawing Tools">
+      <button class="dock-btn active" data-tool="pen" title="Precision Pen (P)" role="radio" aria-checked="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+        </svg>
+        <span class="btn-label">Pen</span>
+      </button>
+
+      <button class="dock-btn" data-tool="brush" title="Expressive Brush (B)" role="radio" aria-checked="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/>
+          <path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>
+        </svg>
+        <span class="btn-label">Brush</span>
+      </button>
+
+      <button class="dock-btn" data-tool="highlighter" title="Highlighter (H)" role="radio" aria-checked="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m14 12-8.5 8.5a2.12 2.12 0 1 1-3-3L11 9"/>
+          <path d="m18 8 3 3"/>
+          <path d="m15 5 4 4"/>
+          <path d="m19 9-4-4-2 2 4 4 2-2Z"/>
+        </svg>
+        <span class="btn-label">Highlight</span>
+      </button>
+
+      <button class="dock-btn" data-tool="eraser" title="Eraser (E)" role="radio" aria-checked="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/>
+          <path d="M22 21H7"/>
+          <path d="m5 11 9 9"/>
+        </svg>
+        <span class="btn-label">Eraser</span>
+      </button>
+    </div>
+
+    <div class="dock-separator"></div>
+
+    <!-- Color Palette Section -->
+    <div class="color-picker-group">
+      <div class="swatches" id="color-swatches">
+        <button class="swatch-btn active" data-color="#f8fafc" style="--swatch-color: #f8fafc;" title="Pure White"></button>
+        <button class="swatch-btn" data-color="#38bdf8" style="--swatch-color: #38bdf8;" title="Sky Blue"></button>
+        <button class="swatch-btn" data-color="#34d399" style="--swatch-color: #34d399;" title="Emerald"></button>
+        <button class="swatch-btn" data-color="#fbbf24" style="--swatch-color: #fbbf24;" title="Amber Yellow"></button>
+        <button class="swatch-btn" data-color="#f43f5e" style="--swatch-color: #f43f5e;" title="Rose Red"></button>
+        <button class="swatch-btn" data-color="#a855f7" style="--swatch-color: #a855f7;" title="Purple"></button>
+        <button class="swatch-btn" data-color="#0f172a" style="--swatch-color: #0f172a;" title="Obsidian Dark"></button>
+      </div>
+
+      <!-- Custom Color Picker Trigger -->
+      <label class="custom-color-trigger" title="Custom Hex Color">
+        <input type="color" id="custom-color-input" value="#f8fafc">
+        <span class="custom-color-preview" id="custom-color-preview"></span>
+      </label>
+    </div>
+
+    <div class="dock-separator"></div>
+
+    <!-- Stroke Size Selector -->
+    <div class="size-control-group">
+      <div class="size-preview-wrapper" title="Adjust Stroke Width">
+        <span class="size-preview-dot" id="size-preview-dot"></span>
+      </div>
+      <input type="range" id="size-slider" min="1" max="48" value="4" class="size-slider" aria-label="Stroke Width">
+      <span class="size-value" id="size-display">4px</span>
+    </div>
+
+    <div class="dock-separator"></div>
+
+    <!-- Undo / Redo / Clear -->
+    <div class="history-group">
+      <button id="btn-undo" class="dock-action-btn" title="Undo (Ctrl+Z)" disabled aria-label="Undo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7v6h6"/>
+          <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+        </svg>
+      </button>
+
+      <button id="btn-redo" class="dock-action-btn" title="Redo (Ctrl+Y)" disabled aria-label="Redo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 7v6h-6"/>
+          <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+        </svg>
+      </button>
+
+      <button id="btn-clear" class="dock-action-btn btn-danger" title="Clear Canvas" aria-label="Clear Canvas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"/>
+          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Clear Confirmation Dialog -->
+  <dialog id="modal-clear-confirm" class="modal-dialog">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Clear Whiteboard?</h3>
+      </div>
+      <p class="modal-body">This will wipe all active strokes from the canvas. You can still undo immediately afterwards.</p>
+      <div class="modal-actions">
+        <button id="btn-cancel-clear" class="btn btn-secondary">Cancel</button>
+        <button id="btn-confirm-clear" class="btn btn-danger-solid">Clear All</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Export Options Dialog -->
+  <dialog id="modal-export" class="modal-dialog">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Export Whiteboard</h3>
+      </div>
+      <div class="modal-body export-options">
+        <label class="radio-option">
+          <input type="radio" name="export-bg" value="theme" checked>
+          <span>With Current Background Color</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="export-bg" value="transparent">
+          <span>Transparent Background (PNG)</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="export-bg" value="white">
+          <span>Clean White Background</span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-cancel-export" class="btn btn-secondary">Cancel</button>
+        <button id="btn-download-png" class="btn btn-primary">Download Image</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Shortcuts Cheat Sheet Dialog -->
+  <dialog id="modal-shortcuts" class="modal-dialog">
+    <div class="modal-card shortcuts-card">
+      <div class="modal-header">
+        <h3>Keyboard & Stylus Shortcuts</h3>
+        <button id="btn-close-shortcuts" class="icon-btn close-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item"><kbd>P</kbd><span>Precision Pen</span></div>
+        <div class="shortcut-item"><kbd>B</kbd><span>Expressive Brush</span></div>
+        <div class="shortcut-item"><kbd>H</kbd><span>Highlighter</span></div>
+        <div class="shortcut-item"><kbd>E</kbd><span>Eraser</span></div>
+        <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>Undo Stroke</span></div>
+        <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>Y</kbd><span>Redo Stroke</span></div>
+        <div class="shortcut-item"><kbd>[</kbd> / <kbd>]</kbd><span>Decrease / Increase Width</span></div>
+        <div class="shortcut-item"><kbd>G</kbd><span>Toggle Dot Grid</span></div>
+        <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>S</kbd><span>Export Image</span></div>
+      </div>
+      <div class="stylus-note">
+        <p>💡 <strong>Stylus / Apple Pencil:</strong> Pressure is sensed natively from your device. For mouse and standard trackpads, dynamic velocity smoothing automatically scales the stroke width.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Scripts: Modular Architecture -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
