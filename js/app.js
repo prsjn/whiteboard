@@ -18,6 +18,14 @@ class WhiteboardApp {
     this.currentStroke = null;
     this.theme = 'dark';
 
+    // Ephemeral Laser Pointer State
+    this.laserPoints = [];
+    this.laserAnimationId = null;
+
+    // Stroke Eraser Session State
+    this.deletedStrokesSession = [];
+    this.lastEraserPos = null;
+
     // DOM Elements
     this.container = document.getElementById('canvas-container');
     this.gridCanvas = document.getElementById('grid-canvas');
@@ -101,6 +109,31 @@ class WhiteboardApp {
     this.draftCanvas.setPointerCapture(e.pointerId);
 
     const rect = this.canvasManager.getRect();
+
+    // Laser pointer mode: ephemeral glowing trail
+    if (this.currentTool === 'laser') {
+      const pt = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        time: performance.now()
+      };
+      this.laserPoints = [pt];
+      this.startLaserAnimation();
+      this.updatePressureBadge(1.0, e.pointerType);
+      return;
+    }
+
+    // Stroke Eraser mode: touch or swipe across any stroke to delete it completely
+    if (this.currentTool === 'eraser') {
+      this.deletedStrokesSession = [];
+      const ex = e.clientX - rect.left;
+      const ey = e.clientY - rect.top;
+      this.lastEraserPos = { x: ex, y: ey };
+      this.performStrokeEraser(ex, ey);
+      this.updatePressureBadge(1.0, e.pointerType);
+      return;
+    }
+
     this.currentStroke = StrokeEngine.createStroke(
       this.currentTool,
       this.currentColor,
@@ -123,7 +156,52 @@ class WhiteboardApp {
     // Update floating circular cursor
     this.updateCursorPosition(x, y);
 
-    if (!this.isDrawing || !this.currentStroke) return;
+    if (!this.isDrawing) return;
+
+    // Handle laser trail movement
+    if (this.currentTool === 'laser') {
+      const events = (typeof e.getCoalescedEvents === 'function')
+        ? e.getCoalescedEvents()
+        : [e];
+      for (const sub of events) {
+        const px = sub.clientX - rect.left;
+        const py = sub.clientY - rect.top;
+        const last = this.laserPoints[this.laserPoints.length - 1];
+        if (!last || Math.hypot(px - last.x, py - last.y) >= 2.5) {
+          this.laserPoints.push({
+            x: px,
+            y: py,
+            time: performance.now()
+          });
+        }
+      }
+      this.startLaserAnimation();
+      this.updatePressureBadge(1.0, e.pointerType);
+      return;
+    }
+
+    // Handle Stroke Eraser continuous collision during sweep
+    if (this.currentTool === 'eraser') {
+      const currX = e.clientX - rect.left;
+      const currY = e.clientY - rect.top;
+
+      if (this.lastEraserPos) {
+        const dist = Math.hypot(currX - this.lastEraserPos.x, currY - this.lastEraserPos.y);
+        const steps = Math.max(1, Math.ceil(dist / 5));
+        for (let s = 1; s <= steps; s++) {
+          const ix = this.lastEraserPos.x + (currX - this.lastEraserPos.x) * (s / steps);
+          const iy = this.lastEraserPos.y + (currY - this.lastEraserPos.y) * (s / steps);
+          this.performStrokeEraser(ix, iy);
+        }
+      } else {
+        this.performStrokeEraser(currX, currY);
+      }
+
+      this.lastEraserPos = { x: currX, y: currY };
+      return;
+    }
+
+    if (!this.currentStroke) return;
 
     // Retrieve high-frequency coalesced sub-events if supported by browser/hardware
     const events = (typeof e.getCoalescedEvents === 'function')
@@ -149,14 +227,82 @@ class WhiteboardApp {
       this.draftCanvas.releasePointerCapture(e.pointerId);
     }
 
+    // Laser pointer does not persist to main canvas or history
+    if (this.currentTool === 'laser') {
+      this.resetPressureBadge();
+      return;
+    }
+
+    // Finalize Stroke Eraser gesture and record undo entry
+    if (this.currentTool === 'eraser') {
+      if (this.deletedStrokesSession && this.deletedStrokesSession.length > 0) {
+        this.historyManager.recordStrokeDeletion(this.deletedStrokesSession);
+      }
+      this.deletedStrokesSession = [];
+      this.lastEraserPos = null;
+      this.resetPressureBadge();
+      return;
+    }
+
     if (this.currentStroke && this.currentStroke.points.length > 0) {
       // Commit stroke to main static canvas layer
       this.canvasManager.commitDraft(this.currentStroke);
-      this.historyManager.pushStroke(this.currentStroke);
+      this.historyManager.addStroke(this.currentStroke);
     }
 
     this.currentStroke = null;
     this.resetPressureBadge();
+  }
+
+  /**
+   * Perform instantaneous stroke deletion on collision
+   */
+  performStrokeEraser(ex, ey) {
+    const strokes = this.historyManager.getStrokes();
+    if (!strokes || strokes.length === 0) return;
+
+    const eraserRadius = Math.max(this.currentSize * 2.5, 12);
+    let anyDeleted = false;
+
+    // Check backwards so splice doesn't skip subsequent items
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      const stroke = strokes[i];
+      if (StrokeEngine.intersectsStroke(stroke, ex, ey, eraserRadius)) {
+        this.deletedStrokesSession.push({
+          stroke,
+          index: i
+        });
+        strokes.splice(i, 1);
+        anyDeleted = true;
+      }
+    }
+
+    if (anyDeleted) {
+      this.canvasManager.redrawAll(strokes);
+    }
+  }
+
+  startLaserAnimation() {
+    if (this.laserAnimationId) return;
+
+    const animate = () => {
+      const now = performance.now();
+      const LASER_LIFETIME = 1100;
+      this.laserPoints = this.laserPoints.filter(p => (now - p.time) < LASER_LIFETIME);
+
+      if (this.laserPoints.length > 0) {
+        const laserColor = (this.currentColor === '#f8fafc' || this.currentColor === '#0f172a')
+          ? '#f43f5e'
+          : this.currentColor;
+        this.canvasManager.renderLaserTrail(this.laserPoints, laserColor, this.currentSize);
+        this.laserAnimationId = requestAnimationFrame(animate);
+      } else {
+        this.canvasManager.clearDraft();
+        this.laserAnimationId = null;
+      }
+    };
+
+    this.laserAnimationId = requestAnimationFrame(animate);
   }
 
   updateCursorPosition(x, y) {
@@ -165,17 +311,28 @@ class WhiteboardApp {
   }
 
   updateCursorVisual() {
-    const profile = StrokeEngine.TOOL_PROFILES[this.currentTool];
     const size = Math.max(this.currentSize, 4);
     this.brushCursor.style.width = `${size}px`;
     this.brushCursor.style.height = `${size}px`;
 
-    if (this.currentTool === 'eraser') {
+    if (this.currentTool === 'laser') {
+      const laserColor = (this.currentColor === '#f8fafc' || this.currentColor === '#0f172a')
+        ? '#f43f5e'
+        : this.currentColor;
+      this.brushCursor.style.borderColor = laserColor;
+      this.brushCursor.style.backgroundColor = 'rgba(244, 63, 94, 0.4)';
+      this.brushCursor.style.boxShadow = `0 0 10px ${laserColor}`;
+    } else if (this.currentTool === 'eraser') {
+      const r = Math.max(this.currentSize * 2.5, 12);
+      this.brushCursor.style.width = `${r * 2}px`;
+      this.brushCursor.style.height = `${r * 2}px`;
       this.brushCursor.style.borderColor = 'var(--danger)';
-      this.brushCursor.style.backgroundColor = 'rgba(244, 63, 94, 0.15)';
+      this.brushCursor.style.backgroundColor = 'rgba(244, 63, 94, 0.12)';
+      this.brushCursor.style.boxShadow = '0 0 0 1px rgba(244, 63, 94, 0.35)';
     } else {
       this.brushCursor.style.borderColor = this.currentColor;
       this.brushCursor.style.backgroundColor = 'transparent';
+      this.brushCursor.style.boxShadow = 'none';
     }
   }
 
@@ -357,8 +514,8 @@ class WhiteboardApp {
         this.triggerToolClick('pen');
       } else if (key === 'b') {
         this.triggerToolClick('brush');
-      } else if (key === 'h') {
-        this.triggerToolClick('highlighter');
+      } else if (key === 'l' || key === 'h') {
+        this.triggerToolClick('laser');
       } else if (key === 'e') {
         this.triggerToolClick('eraser');
       } else if (key === 'g') {

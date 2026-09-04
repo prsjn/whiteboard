@@ -25,12 +25,12 @@ export class StrokeEngine {
       opacity: 1.0,
       taperEnd: true
     },
-    highlighter: {
+    laser: {
       minWidthFactor: 1.0,
       maxWidthFactor: 1.0,
       smoothing: 0.3,
       velocityFactor: 0.0,
-      opacity: 0.35,
+      opacity: 1.0,
       taperEnd: false
     },
     eraser: {
@@ -236,5 +236,71 @@ export class StrokeEngine {
     ctx.stroke();
 
     ctx.restore();
+  }
+
+  /**
+   * Fast geometric collision check between an eraser circle and a stroke
+   */
+  static intersectsStroke(stroke, ex, ey, eraserRadius) {
+    if (!stroke || !stroke.points || stroke.points.length === 0) return false;
+
+    // Fast Bounding Box check
+    const bbox = stroke.bbox;
+    if (bbox) {
+      if (
+        ex + eraserRadius < bbox.minX ||
+        ex - eraserRadius > bbox.maxX ||
+        ey + eraserRadius < bbox.minY ||
+        ey - eraserRadius > bbox.maxY
+      ) {
+        return false;
+      }
+    }
+
+    const points = stroke.points;
+    const n = points.length;
+    const threshold = eraserRadius + (stroke.baseSize || 4) / 2 + 2;
+    const threshSq = threshold * threshold;
+
+    // Single point / dot check
+    if (n === 1) {
+      const dx = ex - points[0].x;
+      const dy = ey - points[0].y;
+      return (dx * dx + dy * dy) <= threshSq;
+    }
+
+    // Check each line segment of the stroke
+    for (let i = 0; i < n - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+
+      const vx = p2.x - p1.x;
+      const vy = p2.y - p1.y;
+      const wx = ex - p1.x;
+      const wy = ey - p1.y;
+
+      const c1 = wx * vx + wy * vy;
+      if (c1 <= 0) {
+        if ((wx * wx + wy * wy) <= threshSq) return true;
+        continue;
+      }
+
+      const c2 = vx * vx + vy * vy;
+      if (c2 <= c1) {
+        const dx = ex - p2.x;
+        const dy = ey - p2.y;
+        if ((dx * dx + dy * dy) <= threshSq) return true;
+        continue;
+      }
+
+      const b = c1 / c2;
+      const projX = p1.x + b * vx;
+      const projY = p1.y + b * vy;
+      const dx = ex - projX;
+      const dy = ey - projY;
+      if ((dx * dx + dy * dy) <= threshSq) return true;
+    }
+
+    return false;
   }
 }

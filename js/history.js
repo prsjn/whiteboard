@@ -1,11 +1,13 @@
 /**
  * History & State Manager
- * Handles undo/redo stack, action dispatching, and optional local auto-persistence.
+ * Handles action-based undo/redo (add stroke, delete stroke via stroke eraser, clear),
+ * and localStorage auto-persistence.
  */
 
 export class HistoryManager {
   constructor(options = {}) {
     this.maxDepth = options.maxDepth || 60;
+    this.strokes = [];
     this.undoStack = [];
     this.redoStack = [];
     this.onStateChange = options.onStateChange || null;
@@ -13,51 +15,125 @@ export class HistoryManager {
   }
 
   /**
-   * Push a completed stroke or action onto the history stack
+   * Add a newly committed stroke
    */
-  pushStroke(stroke) {
-    this.undoStack.push(stroke);
+  addStroke(stroke) {
+    // Generate unique ID and bounding box for fast collision detection
+    stroke.id = stroke.id || `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    this.computeBoundingBox(stroke);
+
+    this.strokes.push(stroke);
+    this.undoStack.push({
+      type: 'add',
+      stroke
+    });
+
     if (this.undoStack.length > this.maxDepth) {
       this.undoStack.shift();
     }
-    // Any new action clears redo stack
+
     this.redoStack = [];
     this.notifyStateChange();
     this.saveToStorage();
   }
 
   /**
-   * Undo the last stroke
+   * Delete a batch of strokes (used by Stroke Eraser)
+   */
+  recordStrokeDeletion(deletedItems) {
+    if (!deletedItems || deletedItems.length === 0) return;
+
+    this.undoStack.push({
+      type: 'delete',
+      items: deletedItems // [{ stroke, index }]
+    });
+
+    if (this.undoStack.length > this.maxDepth) {
+      this.undoStack.shift();
+    }
+
+    this.redoStack = [];
+    this.notifyStateChange();
+    this.saveToStorage();
+  }
+
+  /**
+   * Undo the last action (add, delete, or clear)
    */
   undo() {
     if (!this.canUndo()) return null;
-    const stroke = this.undoStack.pop();
-    this.redoStack.push(stroke);
+
+    const action = this.undoStack.pop();
+
+    if (action.type === 'add') {
+      // Remove the added stroke
+      const idx = this.strokes.indexOf(action.stroke);
+      if (idx !== -1) {
+        this.strokes.splice(idx, 1);
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'delete') {
+      // Restore deleted strokes in ascending order of original index
+      const sorted = [...action.items].sort((a, b) => a.index - b.index);
+      for (const item of sorted) {
+        const insertIdx = Math.min(item.index, this.strokes.length);
+        this.strokes.splice(insertIdx, 0, item.stroke);
+      }
+      this.redoStack.push(action);
+    } else if (action.type === 'clear') {
+      // Restore all strokes
+      this.strokes = [...action.strokes];
+      this.redoStack.push(action);
+    }
+
     this.notifyStateChange();
     this.saveToStorage();
-    return this.undoStack;
+    return this.strokes;
   }
 
   /**
-   * Redo the previously undone stroke
+   * Redo the previously undone action
    */
   redo() {
     if (!this.canRedo()) return null;
-    const stroke = this.redoStack.pop();
-    this.undoStack.push(stroke);
+
+    const action = this.redoStack.pop();
+
+    if (action.type === 'add') {
+      this.strokes.push(action.stroke);
+      this.undoStack.push(action);
+    } else if (action.type === 'delete') {
+      // Re-remove the strokes
+      for (const item of action.items) {
+        const idx = this.strokes.findIndex(s => s.id === item.stroke.id);
+        if (idx !== -1) {
+          this.strokes.splice(idx, 1);
+        }
+      }
+      this.undoStack.push(action);
+    } else if (action.type === 'clear') {
+      this.strokes = [];
+      this.undoStack.push(action);
+    }
+
     this.notifyStateChange();
     this.saveToStorage();
-    return this.undoStack;
+    return this.strokes;
   }
 
   /**
-   * Clear all strokes with undo capability
+   * Clear all strokes with complete undo capability
    */
   clearAll() {
-    if (this.undoStack.length === 0) return;
-    // Push a snapshot action or empty
+    if (this.strokes.length === 0) return;
+
+    this.undoStack.push({
+      type: 'clear',
+      strokes: [...this.strokes]
+    });
+
+    this.strokes = [];
     this.redoStack = [];
-    this.undoStack = [];
     this.notifyStateChange();
     this.saveToStorage();
   }
@@ -71,7 +147,25 @@ export class HistoryManager {
   }
 
   getStrokes() {
-    return this.undoStack;
+    return this.strokes;
+  }
+
+  computeBoundingBox(stroke) {
+    if (!stroke.points || stroke.points.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of stroke.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const pad = (stroke.baseSize || 4) + 4;
+    stroke.bbox = {
+      minX: minX - pad,
+      minY: minY - pad,
+      maxX: maxX + pad,
+      maxY: maxY + pad
+    };
   }
 
   notifyStateChange() {
@@ -79,17 +173,16 @@ export class HistoryManager {
       this.onStateChange({
         canUndo: this.canUndo(),
         canRedo: this.canRedo(),
-        strokeCount: this.undoStack.length
+        strokeCount: this.strokes.length
       });
     }
   }
 
   saveToStorage() {
     try {
-      const serialized = JSON.stringify(this.undoStack);
+      const serialized = JSON.stringify(this.strokes);
       localStorage.setItem(this.storageKey, serialized);
     } catch (e) {
-      // Storage quota or private mode fallback
       console.warn('LocalStorage auto-save failed:', e);
     }
   }
@@ -100,10 +193,14 @@ export class HistoryManager {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          this.undoStack = parsed;
+          this.strokes = parsed;
+          for (const s of this.strokes) {
+            this.computeBoundingBox(s);
+          }
+          this.undoStack = [];
           this.redoStack = [];
           this.notifyStateChange();
-          return this.undoStack;
+          return this.strokes;
         }
       }
     } catch (e) {
