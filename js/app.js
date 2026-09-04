@@ -1,22 +1,33 @@
 /**
- * Whiteboard Main Application Bootstrap
- * Connects CanvasManager, StrokeEngine, HistoryManager, UI controls,
- * and high-frequency pointer input listeners.
+ * Minimal Whiteboard - Application Controller
+ * Orchestrates pointer input, tool selection, undo/redo history,
+ * infinite expandable viewport (pan/zoom), and UI interactions.
  */
 
-import { CanvasManager } from './canvas.js';
 import { StrokeEngine } from './stroke.js';
+import { CanvasManager } from './canvas.js';
 import { HistoryManager } from './history.js';
 
 class WhiteboardApp {
   constructor() {
-    // Application State
+    // Current Tool & Style State
     this.currentTool = 'pen';
     this.currentColor = '#f8fafc';
     this.currentSize = 4;
+    this.theme = 'dark';
+
+    // Drawing & Interaction State
     this.isDrawing = false;
     this.currentStroke = null;
-    this.theme = 'dark';
+    this.isPointerInsideCanvas = false;
+
+    // Viewport Navigation (Pan & Zoom)
+    this.isPanning = false;
+    this.isSpacePressed = false;
+    this.lastPanPos = { x: 0, y: 0 };
+    this.activePointers = new Map();
+    this.initialPinchDistance = null;
+    this.initialPinchZoom = 1.0;
 
     // Ephemeral Laser Pointer State
     this.laserPoints = [];
@@ -40,6 +51,13 @@ class WhiteboardApp {
     this.customColorPreview = document.getElementById('custom-color-preview');
     this.btnUndo = document.getElementById('btn-undo');
     this.btnRedo = document.getElementById('btn-redo');
+
+    // Zoom & Viewport Dock Elements
+    this.zoomPercentage = document.getElementById('zoom-percentage');
+    this.btnZoomIn = document.getElementById('btn-zoom-in');
+    this.btnZoomOut = document.getElementById('btn-zoom-out');
+    this.btnZoomReset = document.getElementById('btn-zoom-reset');
+    this.btnZoomFit = document.getElementById('btn-zoom-fit');
 
     // Modals
     this.modalClear = document.getElementById('modal-clear-confirm');
@@ -74,13 +92,15 @@ class WhiteboardApp {
     }
 
     this.bindPointerEvents();
+    this.bindViewportNavigation();
     this.bindToolbarEvents();
     this.bindKeyboardShortcuts();
     this.bindModals();
+
     this.container.setAttribute('data-tool', this.currentTool);
     this.draftCanvas.setAttribute('data-tool', this.currentTool);
-    this.updateCursorVisual();
     this.updateSizeDisplay();
+    this.updateZoomDisplay();
   }
 
   /* ========================================================================
@@ -93,33 +113,62 @@ class WhiteboardApp {
     this.draftCanvas.addEventListener('pointerup', (e) => this.handlePointerUp(e));
     this.draftCanvas.addEventListener('pointercancel', (e) => this.handlePointerUp(e));
 
-    // Hide/show brush cursor when entering or leaving canvas
+    // Canvas container enter/leave tracking
     this.container.addEventListener('pointerenter', () => {
-      this.brushCursor.classList.add('active');
+      this.isPointerInsideCanvas = true;
     });
 
     this.container.addEventListener('pointerleave', () => {
-      this.brushCursor.classList.remove('active');
+      this.isPointerInsideCanvas = false;
     });
   }
 
   handlePointerDown(e) {
-    // Only handle primary button
+    this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Multi-touch pinch-to-zoom check (2 fingers down)
+    if (this.activePointers.size === 2) {
+      this.isDrawing = false;
+      this.currentStroke = null;
+      this.canvasManager.clearDraft();
+      this.isPanning = true;
+      const pts = Array.from(this.activePointers.values());
+      this.initialPinchDistance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      this.initialPinchZoom = this.canvasManager.zoom;
+      this.lastPanPos = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2
+      };
+      return;
+    }
+
+    // Panning navigation (Middle Mouse Button, Spacebar held, or Pan Tool active)
+    if (e.button === 1 || this.isSpacePressed || this.currentTool === 'pan') {
+      this.isPanning = true;
+      this.lastPanPos = { x: e.clientX, y: e.clientY };
+      this.container.classList.add('is-panning');
+      this.draftCanvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+
+    // Only handle primary button for drawing
     if (e.button !== 0) return;
 
     this.isDrawing = true;
     this.draftCanvas.setPointerCapture(e.pointerId);
 
     const rect = this.canvasManager.getRect();
+    const transform = this.canvasManager.getViewTransform();
 
-    // Laser pointer mode: ephemeral glowing trail
+    // Laser pointer mode: ephemeral glowing trail in world space
     if (this.currentTool === 'laser') {
-      const pt = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+      const world = this.canvasManager.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      this.laserPoints = [{
+        x: world.x,
+        y: world.y,
         time: performance.now()
-      };
-      this.laserPoints = [pt];
+      }];
       this.startLaserAnimation();
       this.updatePressureBadge(1.0, e.pointerType);
       return;
@@ -128,21 +177,21 @@ class WhiteboardApp {
     // Stroke Eraser mode: touch or swipe across any stroke to delete it completely
     if (this.currentTool === 'eraser') {
       this.deletedStrokesSession = [];
-      const ex = e.clientX - rect.left;
-      const ey = e.clientY - rect.top;
-      this.lastEraserPos = { x: ex, y: ey };
-      this.performStrokeEraser(ex, ey);
+      const world = this.canvasManager.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      this.lastEraserPos = { x: world.x, y: world.y };
+      this.performStrokeEraser(world.x, world.y);
       this.updatePressureBadge(1.0, e.pointerType);
       return;
     }
 
+    // Normal stroke creation in world coordinates
     this.currentStroke = StrokeEngine.createStroke(
       this.currentTool,
       this.currentColor,
       this.currentSize
     );
 
-    const firstPoint = StrokeEngine.extractPoint(e, null, this.currentTool, rect);
+    const firstPoint = StrokeEngine.extractPoint(e, null, this.currentTool, rect, transform);
     this.currentStroke.points.push(firstPoint);
 
     // Initial render
@@ -151,28 +200,64 @@ class WhiteboardApp {
   }
 
   handlePointerMove(e) {
-    const rect = this.canvasManager.getRect();
-    const x = e.clientX;
-    const y = e.clientY;
+    if (this.activePointers.has(e.pointerId)) {
+      this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
 
-    // Update floating circular cursor
-    this.updateCursorPosition(x, y);
+    // Two-finger pinch-to-zoom & two-finger pan
+    if (this.activePointers.size === 2) {
+      const pts = Array.from(this.activePointers.values());
+      const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const currentCenter = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2
+      };
+
+      if (this.initialPinchDistance && this.initialPinchDistance > 10) {
+        const factor = currentDist / this.initialPinchDistance;
+        const rect = this.canvasManager.getRect();
+        this.canvasManager.setZoom(this.initialPinchZoom * factor, currentCenter.x - rect.left, currentCenter.y - rect.top);
+      }
+
+      if (this.lastPanPos) {
+        const dx = currentCenter.x - this.lastPanPos.x;
+        const dy = currentCenter.y - this.lastPanPos.y;
+        this.canvasManager.panBy(dx, dy);
+      }
+
+      this.lastPanPos = currentCenter;
+      this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      this.updateZoomDisplay();
+      return;
+    }
+
+    // Active Panning
+    if (this.isPanning) {
+      const dx = e.clientX - this.lastPanPos.x;
+      const dy = e.clientY - this.lastPanPos.y;
+      this.lastPanPos = { x: e.clientX, y: e.clientY };
+      this.canvasManager.panBy(dx, dy);
+      this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      return;
+    }
 
     if (!this.isDrawing) return;
 
-    // Handle laser trail movement
+    const rect = this.canvasManager.getRect();
+    const transform = this.canvasManager.getViewTransform();
+
+    // Handle laser trail movement in world coordinates
     if (this.currentTool === 'laser') {
       const events = (typeof e.getCoalescedEvents === 'function')
         ? e.getCoalescedEvents()
         : [e];
       for (const sub of events) {
-        const px = sub.clientX - rect.left;
-        const py = sub.clientY - rect.top;
+        const world = this.canvasManager.screenToWorld(sub.clientX - rect.left, sub.clientY - rect.top);
         const last = this.laserPoints[this.laserPoints.length - 1];
-        if (!last || Math.hypot(px - last.x, py - last.y) >= 2.5) {
+        if (!last || Math.hypot(world.x - last.x, world.y - last.y) >= (2.5 / this.canvasManager.zoom)) {
           this.laserPoints.push({
-            x: px,
-            y: py,
+            x: world.x,
+            y: world.y,
             time: performance.now()
           });
         }
@@ -182,37 +267,37 @@ class WhiteboardApp {
       return;
     }
 
-    // Handle Stroke Eraser continuous collision during sweep
+    // Handle Stroke Eraser continuous collision sweep
     if (this.currentTool === 'eraser') {
-      const currX = e.clientX - rect.left;
-      const currY = e.clientY - rect.top;
+      const world = this.canvasManager.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
 
       if (this.lastEraserPos) {
-        const dist = Math.hypot(currX - this.lastEraserPos.x, currY - this.lastEraserPos.y);
-        const steps = Math.max(1, Math.ceil(dist / 5));
+        const dist = Math.hypot(world.x - this.lastEraserPos.x, world.y - this.lastEraserPos.y);
+        const stepSize = Math.max(2, 5 / this.canvasManager.zoom);
+        const steps = Math.max(1, Math.ceil(dist / stepSize));
         for (let s = 1; s <= steps; s++) {
-          const ix = this.lastEraserPos.x + (currX - this.lastEraserPos.x) * (s / steps);
-          const iy = this.lastEraserPos.y + (currY - this.lastEraserPos.y) * (s / steps);
+          const ix = this.lastEraserPos.x + (world.x - this.lastEraserPos.x) * (s / steps);
+          const iy = this.lastEraserPos.y + (world.y - this.lastEraserPos.y) * (s / steps);
           this.performStrokeEraser(ix, iy);
         }
       } else {
-        this.performStrokeEraser(currX, currY);
+        this.performStrokeEraser(world.x, world.y);
       }
 
-      this.lastEraserPos = { x: currX, y: currY };
+      this.lastEraserPos = { x: world.x, y: world.y };
       return;
     }
 
     if (!this.currentStroke) return;
 
-    // Retrieve high-frequency coalesced sub-events if supported by browser/hardware
+    // Retrieve high-frequency coalesced sub-events
     const events = (typeof e.getCoalescedEvents === 'function')
       ? e.getCoalescedEvents()
       : [e];
 
     for (const subEvent of events) {
       const prevPoint = this.currentStroke.points[this.currentStroke.points.length - 1];
-      const point = StrokeEngine.extractPoint(subEvent, prevPoint, this.currentTool, rect);
+      const point = StrokeEngine.extractPoint(subEvent, prevPoint, this.currentTool, rect, transform);
       this.currentStroke.points.push(point);
       this.updatePressureBadge(point.pressure, subEvent.pointerType);
     }
@@ -222,6 +307,19 @@ class WhiteboardApp {
   }
 
   handlePointerUp(e) {
+    if (e && e.pointerId) {
+      this.activePointers.delete(e.pointerId);
+    }
+
+    if (this.isPanning) {
+      this.isPanning = false;
+      this.container.classList.remove('is-panning');
+      if (e && e.pointerId && this.draftCanvas.hasPointerCapture(e.pointerId)) {
+        this.draftCanvas.releasePointerCapture(e.pointerId);
+      }
+      return;
+    }
+
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
@@ -257,19 +355,20 @@ class WhiteboardApp {
   }
 
   /**
-   * Perform instantaneous stroke deletion on collision
+   * Perform instantaneous stroke deletion on collision in world coordinates
    */
-  performStrokeEraser(ex, ey) {
+  performStrokeEraser(worldX, worldY) {
     const strokes = this.historyManager.getStrokes();
     if (!strokes || strokes.length === 0) return;
 
-    const eraserRadius = Math.max(this.currentSize * 2.5, 12);
+    // Eraser radius in world space
+    const eraserRadius = Math.max(this.currentSize * 2.5, 12) / this.canvasManager.zoom;
     let anyDeleted = false;
 
     // Check backwards so splice doesn't skip subsequent items
     for (let i = strokes.length - 1; i >= 0; i--) {
       const stroke = strokes[i];
-      if (StrokeEngine.intersectsStroke(stroke, ex, ey, eraserRadius)) {
+      if (StrokeEngine.intersectsStroke(stroke, worldX, worldY, eraserRadius)) {
         this.deletedStrokesSession.push({
           stroke,
           index: i
@@ -284,6 +383,9 @@ class WhiteboardApp {
     }
   }
 
+  /**
+   * 60–120fps Laser Pointer Animation Loop
+   */
   startLaserAnimation() {
     if (this.laserAnimationId) return;
 
@@ -307,29 +409,74 @@ class WhiteboardApp {
     this.laserAnimationId = requestAnimationFrame(animate);
   }
 
-  updateCursorPosition(x, y) {
-    // Pure hardware cursor mode: driven by browser OS cursor
-  }
+  /* ========================================================================
+     Viewport Navigation: Mouse Wheel, Touchpad, & Zoom Controls
+     ======================================================================== */
 
-  updateCursorVisual() {
-    // Pure hardware SVG cursor: automatically updated via [data-tool] attribute on canvas
-  }
+  bindViewportNavigation() {
+    // Mouse Wheel / Trackpad zoom and pan
+    this.container.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
 
-  getTintedColor(color, alpha) {
-    if (color && color.startsWith('#')) {
-      let r = 0, g = 0, b = 0;
-      if (color.length === 4) {
-        r = parseInt(color[1] + color[1], 16);
-        g = parseInt(color[2] + color[2], 16);
-        b = parseInt(color[3] + color[3], 16);
-      } else if (color.length === 7) {
-        r = parseInt(color.slice(1, 3), 16);
-        g = parseInt(color.slice(3, 5), 16);
-        b = parseInt(color.slice(5, 7), 16);
-      }
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    // Zoom Dock Buttons
+    if (this.btnZoomIn) {
+      this.btnZoomIn.addEventListener('click', () => {
+        this.canvasManager.zoomAt(this.canvasManager.width / 2, this.canvasManager.height / 2, 1.25);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      });
     }
-    return 'transparent';
+
+    if (this.btnZoomOut) {
+      this.btnZoomOut.addEventListener('click', () => {
+        this.canvasManager.zoomAt(this.canvasManager.width / 2, this.canvasManager.height / 2, 0.8);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      });
+    }
+
+    if (this.btnZoomReset) {
+      this.btnZoomReset.addEventListener('click', () => {
+        this.canvasManager.resetView();
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      });
+    }
+
+    if (this.btnZoomFit) {
+      this.btnZoomFit.addEventListener('click', () => {
+        this.canvasManager.fitToContent(this.historyManager.getStrokes());
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      });
+    }
+  }
+
+  handleWheel(e) {
+    e.preventDefault();
+
+    const rect = this.canvasManager.getRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    // Ctrl + Wheel or standard vertical wheel zooming
+    if (e.ctrlKey || (!e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX) * 1.5)) {
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      this.canvasManager.zoomAt(screenX, screenY, factor);
+      this.canvasManager.redrawAll(this.historyManager.getStrokes());
+      this.updateZoomDisplay();
+    } else {
+      // Two-finger trackpad panning or Shift+Wheel horizontal scroll
+      const dx = e.shiftKey ? -e.deltaY : -e.deltaX;
+      const dy = e.shiftKey ? 0 : -e.deltaY;
+      this.canvasManager.panBy(dx, dy);
+      this.canvasManager.redrawAll(this.historyManager.getStrokes());
+    }
+  }
+
+  updateZoomDisplay() {
+    if (this.zoomPercentage) {
+      this.zoomPercentage.textContent = `${Math.round(this.canvasManager.zoom * 100)}%`;
+    }
   }
 
   updatePressureBadge(pressure, pointerType) {
@@ -347,11 +494,11 @@ class WhiteboardApp {
      ======================================================================== */
 
   bindToolbarEvents() {
-    // Tool selection buttons
-    const toolBtns = document.querySelectorAll('.dock-btn[data-tool]');
-    toolBtns.forEach((btn) => {
+    // Tool buttons (Pen, Brush, Laser, Eraser, Pan)
+    const toolButtons = document.querySelectorAll('.tool-group .dock-btn');
+    toolButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        toolBtns.forEach((b) => {
+        toolButtons.forEach((b) => {
           b.classList.remove('active');
           b.setAttribute('aria-checked', 'false');
         });
@@ -420,19 +567,16 @@ class WhiteboardApp {
     this.currentTool = tool;
     this.container.setAttribute('data-tool', tool);
     this.draftCanvas.setAttribute('data-tool', tool);
-    this.updateCursorVisual();
   }
 
   setColor(color) {
     this.currentColor = color;
-    this.updateCursorVisual();
   }
 
   setSize(size) {
     this.currentSize = size;
     this.sizeSlider.value = size;
     this.updateSizeDisplay();
-    this.updateCursorVisual();
   }
 
   updateSizeDisplay() {
@@ -450,9 +594,9 @@ class WhiteboardApp {
   }
 
   handleRedo() {
-    const remainingStrokes = this.historyManager.redo();
-    if (remainingStrokes !== null) {
-      this.canvasManager.redrawAll(remainingStrokes);
+    const nextStrokes = this.historyManager.redo();
+    if (nextStrokes !== null) {
+      this.canvasManager.redrawAll(nextStrokes);
     }
   }
 
@@ -484,13 +628,20 @@ class WhiteboardApp {
   }
 
   /* ========================================================================
-     Keyboard Shortcuts
+     Keyboard & Shortcut Listeners
      ======================================================================== */
 
   bindKeyboardShortcuts() {
+    // Space key hold for quick pan
     window.addEventListener('keydown', (e) => {
-      // Don't trigger if user is interacting with an input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (e.code === 'Space' && !this.isSpacePressed) {
+        this.isSpacePressed = true;
+        this.container.classList.add('is-panning');
+        e.preventDefault();
+        return;
+      }
 
       const key = e.key.toLowerCase();
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
@@ -512,10 +663,32 @@ class WhiteboardApp {
         this.triggerToolClick('pen');
       } else if (key === 'b') {
         this.triggerToolClick('brush');
-      } else if (key === 'l' || key === 'h') {
+      } else if (key === 'l') {
         this.triggerToolClick('laser');
       } else if (key === 'e') {
         this.triggerToolClick('eraser');
+      } else if (key === 'h') {
+        this.triggerToolClick('pan');
+      } else if (key === '+' || key === '=') {
+        e.preventDefault();
+        this.canvasManager.zoomAt(this.canvasManager.width / 2, this.canvasManager.height / 2, 1.2);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      } else if (key === '-' || key === '_') {
+        e.preventDefault();
+        this.canvasManager.zoomAt(this.canvasManager.width / 2, this.canvasManager.height / 2, 0.82);
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      } else if (key === '0') {
+        e.preventDefault();
+        this.canvasManager.resetView();
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
+      } else if (e.shiftKey && key === '!') {
+        e.preventDefault();
+        this.canvasManager.fitToContent(this.historyManager.getStrokes());
+        this.canvasManager.redrawAll(this.historyManager.getStrokes());
+        this.updateZoomDisplay();
       } else if (key === 'g') {
         document.getElementById('btn-grid-toggle').click();
       } else if (key === '[') {
@@ -524,6 +697,15 @@ class WhiteboardApp {
         this.setSize(Math.min(48, this.currentSize + 2));
       } else if (key === '?') {
         this.modalShortcuts.showModal();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        this.isSpacePressed = false;
+        if (!this.isPanning && this.currentTool !== 'pan') {
+          this.container.classList.remove('is-panning');
+        }
       }
     });
   }
@@ -556,7 +738,7 @@ class WhiteboardApp {
 
     document.getElementById('btn-download-png').addEventListener('click', () => {
       const selectedBg = document.querySelector('input[name="export-bg"]:checked')?.value || 'theme';
-      const dataUrl = this.canvasManager.exportImage(this.historyManager.getStrokes(), selectedBg);
+      const dataUrl = this.canvasManager.exportImage(this.historyManager.getStrokes(), selectedBg, 'content');
       
       const link = document.createElement('a');
       link.download = `whiteboard-${Date.now()}.png`;

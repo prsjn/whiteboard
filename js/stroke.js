@@ -57,12 +57,22 @@ export class StrokeEngine {
   }
 
   /**
-   * Create a standardized point from a PointerEvent.
+   * Create a standardized point from a PointerEvent in world space.
    * Handles real stylus pressure or calculates velocity-based fallback for mouse/touch.
    */
-  static extractPoint(e, prevPoint, toolType, canvasRect) {
-    const x = e.clientX - canvasRect.left;
-    const y = e.clientY - canvasRect.top;
+  static extractPoint(e, prevPoint, toolType, canvasRect, viewTransform = null) {
+    const screenX = e.clientX - canvasRect.left;
+    const screenY = e.clientY - canvasRect.top;
+
+    // Convert screen coordinates to world space
+    let x = screenX;
+    let y = screenY;
+    const zoom = (viewTransform && typeof viewTransform.zoom === 'number') ? viewTransform.zoom : 1;
+    if (viewTransform) {
+      x = (screenX - (viewTransform.panX || 0)) / zoom;
+      y = (screenY - (viewTransform.panY || 0)) / zoom;
+    }
+
     const time = e.timeStamp || Date.now();
     const isStylus = e.pointerType === 'pen';
 
@@ -71,8 +81,8 @@ export class StrokeEngine {
 
     if (prevPoint) {
       const dt = Math.max(time - prevPoint.time, 8); // clamp to prevent div by 0
-      const dx = x - prevPoint.x;
-      const dy = y - prevPoint.y;
+      const dx = (x - prevPoint.x) * zoom; // evaluate velocity in screen pixels
+      const dy = (y - prevPoint.y) * zoom;
       const dist = Math.hypot(dx, dy);
       const instantVelocity = dist / dt;
 

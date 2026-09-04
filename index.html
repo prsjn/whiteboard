@@ -132,6 +132,16 @@
         </svg>
         <span class="btn-label">Eraser</span>
       </button>
+
+      <button class="dock-btn" data-tool="pan" title="Pan Hand Tool (H or Space+Drag)" role="radio" aria-checked="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+          <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+          <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+        </svg>
+        <span class="btn-label">Pan</span>
+      </button>
     </div>
 
     <div class="dock-separator"></div>
@@ -194,6 +204,37 @@
     </div>
   </nav>
 
+  <!-- Floating Viewport & Zoom Navigation Dock -->
+  <aside class="zoom-dock" id="zoom-dock" aria-label="Canvas Zoom and Navigation">
+    <button id="btn-zoom-out" class="zoom-btn" title="Zoom Out (-)" aria-label="Zoom Out">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
+    
+    <button id="btn-zoom-reset" class="zoom-level-btn" title="Reset Zoom to 100% (0)" aria-label="Reset Zoom">
+      <span id="zoom-percentage">100%</span>
+    </button>
+
+    <button id="btn-zoom-in" class="zoom-btn" title="Zoom In (+)" aria-label="Zoom In">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
+
+    <div class="zoom-divider"></div>
+
+    <button id="btn-zoom-fit" class="zoom-btn" title="Fit to Content (Shift+1)" aria-label="Fit to Content">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 3h6v6"/>
+        <path d="M9 21H3v-6"/>
+        <path d="M21 3l-7 7"/>
+        <path d="M3 21l7-7"/>
+      </svg>
+    </button>
+  </aside>
+
   <!-- Clear Confirmation Dialog -->
   <dialog id="modal-clear-confirm" class="modal-dialog">
     <div class="modal-card">
@@ -247,6 +288,9 @@
         <div class="shortcut-item"><kbd>B</kbd><span>Expressive Brush</span></div>
         <div class="shortcut-item"><kbd>L</kbd><span>Laser Pointer</span></div>
         <div class="shortcut-item"><kbd>E</kbd><span>Eraser</span></div>
+        <div class="shortcut-item"><kbd>H</kbd> / <kbd>Space</kbd> + <kbd>Drag</kbd><span>Pan Canvas</span></div>
+        <div class="shortcut-item"><kbd>+</kbd> / <kbd>-</kbd><span>Zoom In / Out</span></div>
+        <div class="shortcut-item"><kbd>0</kbd><span>Reset Zoom (100%)</span></div>
         <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>Undo Stroke</span></div>
         <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>Y</kbd><span>Redo Stroke</span></div>
         <div class="shortcut-item"><kbd>[</kbd> / <kbd>]</kbd><span>Decrease / Increase Width</span></div>
